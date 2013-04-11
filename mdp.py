@@ -105,10 +105,10 @@ class QuestMDP(MDP):
 
     def R(self, state):
         "Return a numeric reward for this state."
-        reward = state.gold + sum([self.territories[x].gold for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]) - 3000*sum([1 for x in self.territories if getattr(state, x) == "WILD"])
+        reward = state.gold + sum([self.territories[x].gold for x in self.territories if getattr(state, x) in ["CONTROLLED"]]) + sum([self.territories[x].gold*2 for x in self.territories if getattr(state, x) in ["RE-ENFORCED"]]) - 3000*sum([1 for x in self.territories if getattr(state, x) == "WILD"])
         if not [x for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]:
             return -1.0*999999999999
-        if not [x for x in self.territories if getattr(state, x) == "WILD"]:
+        if state.gold > 10000: #not [x for x in self.territories if getattr(state, x) == "WILD"]:
             return 999999999999
         return reward
 
@@ -129,6 +129,8 @@ class QuestMDP(MDP):
             territories = {t: getattr(state, t) for t in self.territories}
             territories[value] = "RE-ENFORCED"
             states += [(1, self.State(state.gold - self.territories[value].gold*2, state.force, **territories))]
+        elif action == "WAIT":
+            states += [(1,new_state)]
         else: #TAKE
             territories = {t: getattr(state, t) for t in self.territories}
             territories[value] = "CONTROLLED"
@@ -151,7 +153,7 @@ class QuestMDP(MDP):
                 all_states += [(prob*p, self.State(_state.gold, _state.force, **territories))]
         for p, _state in all_states:
             dict_state = _state._asdict()
-            dict_state['gold'] += sum([self.territories[x].gold for x in self.territories if getattr(_state, x) in ["CONTROLLED", "RE-ENFORCED"]]) - _state.force*0.5
+            dict_state['gold'] += sum([self.territories[x].gold for x in self.territories if getattr(_state, x) in ["CONTROLLED"]]) + sum([self.territories[x].gold*2 for x in self.territories if getattr(_state, x) in ["RE-ENFORCED"]]) - _state.force*0.5
             _state = self.State(**dict_state)
         return all_states
 
@@ -169,7 +171,7 @@ class QuestMDP(MDP):
             border_territories |= self.territories[t].get_borders() - owned
         reenforce_territories = [("RE-ENFORCE", t) for t in controlled]
         take_territories = [("TAKE", t) for t in border_territories if state.force >= self.territories[t].force]
-        return raise_forces + reduce_forces + reenforce_territories + take_territories
+        return raise_forces + reduce_forces + reenforce_territories + take_territories+[("WAIT",None)]
 
     def generate_states(self):
         if not self.states:

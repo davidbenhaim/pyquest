@@ -26,7 +26,7 @@ class Game:
         if not [x for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]:
             self.print_state()
             return True
-        if len([x for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]) == len(self.territories):
+        if self.comp.R(self.state) == 999999999999:#len([x for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]) == len(self.territories):
             self.print_state()
             return True
         return False
@@ -106,6 +106,8 @@ class Game:
             territories = {t: getattr(state, t) for t in self.territories}
             territories[value] = "RE-ENFORCED"
             states += [(1, State(state.gold - self.territories[value].gold*2, state.force, **territories))]
+        elif action == "WAIT":
+            states += [(1,new_state)]
         else: #TAKE
             territories = {t: getattr(state, t) for t in self.territories}
             territories[value] = "CONTROLLED"
@@ -126,11 +128,13 @@ class Game:
                     if t in rebelled:
                         territories[t] = "WILD"
                 all_states += [(prob*p, State(state.gold, state.force, **territories))]
-        for p,state in all_states:
+        final_states = []
+        for p, state in all_states:
             dict_state = state._asdict()
-            dict_state['gold'] += sum([self.territories[x].gold for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]) - state.force*.1
+            dict_state['gold'] += sum([self.territories[x].gold for x in self.territories if getattr(state, x) in ["CONTROLLED"]]) + sum([self.territories[x].gold*2 for x in self.territories if getattr(state, x) in ["RE-ENFORCED"]]) - state.force*.1
             state = State(**dict_state)
-        self.state = self.chance(all_states)[1]
+            final_states.append((p, state))
+        self.state = self.chance(final_states)[1]
     
     def print_state(self):
         print self.state
