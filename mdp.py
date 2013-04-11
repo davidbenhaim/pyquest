@@ -94,7 +94,7 @@ Fig[17,1] = GridMDP([[-0.04, -0.04, -0.04, +1],
 #______________________________________________________________________________
 
 class QuestMDP(MDP):
-    def __init__(self, territories, init=None, gamma=.001):
+    def __init__(self, territories, init=None, gamma=.1):
         self.territories = {t.name:t for t in territories}
         self.State = make_State(territories)
         init = init or self.random_init()
@@ -108,7 +108,7 @@ class QuestMDP(MDP):
         reward = state.gold + sum([self.territories[x].gold for x in self.territories if getattr(state, x) in ["CONTROLLED"]]) + sum([self.territories[x].gold*2 for x in self.territories if getattr(state, x) in ["RE-ENFORCED"]]) - 3000*sum([1 for x in self.territories if getattr(state, x) == "WILD"])
         if not [x for x in self.territories if getattr(state, x) in ["CONTROLLED", "RE-ENFORCED"]]:
             return -1.0*999999999999
-        if state.gold > 10000: #not [x for x in self.territories if getattr(state, x) == "WILD"]:
+        if not [x for x in self.territories if getattr(state, x) == "WILD"]:
             return 999999999999
         return reward
 
@@ -162,7 +162,10 @@ class QuestMDP(MDP):
         fixed list of actions, except for terminal states. Override this
         method if you need to specialize by state."""
         actions = []
-        raise_forces = [("RAISE_FORCE", state.force*2.0)]
+        if state.gold > 0:
+            raise_forces = [("RAISE_FORCE", state.force*2.0)]
+        else:
+            raise_forces = []
         reduce_forces = [] #[("REDUCE_FORCE", state.force/2.0)]
         controlled = [t for t in self.territories if getattr(state, t) == "CONTROLLED"]
         owned = set([t for t in self.territories if getattr(state, t) in ["CONTROLLED", "RE-ENFORCED"]])
