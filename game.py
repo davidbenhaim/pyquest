@@ -14,9 +14,9 @@ class Game:
         self.territories = {t.name:t for t in territories}
         self.state = start_state
         self.turn = 0
+        init_state = self.state
+        self.comp = mdp.QuestMDP(set(self.territories.values()), init_state)
         if not self.player:
-            init_state = self.state
-            self.comp = mdp.QuestMDP(set(self.territories.values()), init_state)
             self.comp.generate_states()
             self.policy = mdp.best_policy(self.comp, mdp.value_iteration(self.comp))
             print self.state
@@ -85,7 +85,7 @@ class Game:
             border_territories |= self.territories[t].get_borders() - owned
         reenforce_territories = [("RE-ENFORCE", t) for t in controlled]
         take_territories = [("TAKE", t) for t in border_territories if state.force >= self.territories[t].force]
-        return raise_forces + reduce_forces + reenforce_territories + take_territories
+        return raise_forces + reduce_forces + reenforce_territories + take_territories + [("WAIT",None)]
 
     #incredibly innefficiant plant function
     def do_action(self, action):
