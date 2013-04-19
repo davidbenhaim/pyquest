@@ -1,3 +1,5 @@
+import copy
+
 class hashdict(dict):
     """
     hashable dict implementation, suitable for use as a key into
@@ -20,15 +22,31 @@ class hashdict(dict):
        http://stackoverflow.com/questions/1151658/python-hashable-dicts
 
     """
+    def make_hash(self, o):
+        """
+        Makes a hash from a dictionary, list, tuple or set to any level, that contains
+        only other hashable types (including any lists, tuples, sets, and
+        dictionaries).
+        """
+        if isinstance(o, (set, tuple, list)):
+            return tuple([self.make_hash(e) for e in o])    
+        elif not isinstance(o, dict):
+            return hash(o)
+        new_o = copy.deepcopy(o)
+        for k, v in new_o.items():
+            new_o[k] = self.make_hash(v)
+        return hash(tuple(sorted(new_o.items())))
+
     def __key(self):
         return tuple(sorted(self.items()))
+
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__,
             ", ".join("{0}={1}".format(
                     str(i[0]),repr(i[1])) for i in self.__key()))
 
     def __hash__(self):
-        return hash(self.__key())
+        return self.make_hash(dict(self))
 
     def __setitem__(self, key, value):
         raise TypeError("{0} does not support item assignment"
@@ -55,3 +73,4 @@ class hashdict(dict):
         result = hashdict(self)
         dict.update(result, right)
         return result
+

@@ -299,7 +299,7 @@ def unique(seq):
     """
     return list(set(seq))
 
-def product(numbers):
+def pproduct(numbers):
     """Return the product of the numbers.
     >>> product([1,2,3,4])
     24
