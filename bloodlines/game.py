@@ -348,12 +348,12 @@ class Game:
                 player_actions[player.name] = self.actions_available(player)
             sets_of_actions = [{player_actions.keys()[i] : x for i,x in enumerate(actions)} for actions in product(*player_actions.values())]
             print "Number of possible action combos: %s" % len(sets_of_actions)
-            possible_states = []
+            possible_states = 0
             for actions in sets_of_actions:
-                possible_states += self.get_next_states(actions)
+                possible_states += len(self.get_next_states(actions))
             te = time.time()
             print('%2.2f sec' % (te-ts))
-            print "Number of possible following states: %s" % len(possible_states)
+            print "Number of possible following states: %i" % possible_states
             print "Turn #%i" % i
             i += 1
             for player in self.players.values():

@@ -300,7 +300,7 @@ class AttackAction(Action):
                     p = (state.territories[action.border.name].player_forces*1.0)/total_forces
                 resulting_states.append((p,s))
         # print sum([p for p,s in resulting_states]), [p for p,s in resulting_states]
-        if sum([p for p,s in resulting_states]) != 1:
+        if abs(1-sum([p for p,s in resulting_states])) >= .01:
             pdb.set_trace()
         return resulting_states
 
