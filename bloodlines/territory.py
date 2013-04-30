@@ -51,6 +51,6 @@ class Territory:
         return not self.__eq__(other)
 
     def copy(self):
-        return Territory(self.name, self.gold, self.natural_force, self.status, self.player_forces).set_borders(self.borders)
+        return Territory(self.name, self.gold, self.natural_force, self.status, self.player_forces, self.health, self.economy, self.loyalty).set_borders(self.borders)
 
 

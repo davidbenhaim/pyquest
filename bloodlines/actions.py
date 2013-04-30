@@ -1,4 +1,4 @@
-from action import Action, AttackAction, DefendAction, RaiseForceAction, SendSpyAction
+from action import Action, AttackAction, DefendAction, RaiseForceAction, SendSpyAction, MoveForceAction, PropagandaAction, InciteRebellionAction
 from territories import gamemap
 import abc
 
@@ -13,7 +13,14 @@ for territory in gamemap:
 				 name='Attack %s from %s' % (territory.name, border.name),
 				 )
 			)
-		gameactions.append(attack_territory_from_other)
+		move_forces_from_other = type('Move_forces_from_%s_%s' % (border.name, territory.name),
+			(MoveForceAction,),
+			dict(territory=territory,
+				 border=border,
+				 name='Move forces from %s to %s' % (border.name, territory.name),
+				 )
+			)
+		gameactions += [attack_territory_from_other, move_forces_from_other]
 
 for territory in gamemap:
 	defend_territory = type('Defend_%s' % territory.name,
@@ -29,8 +36,19 @@ for territory in gamemap:
 			 name='Raise Forces in %s' % territory.name,
 			 )
 		)
-	gameactions.append(defend_territory)
-	gameactions.append(raise_force)
+	propaganda = type('Propaganda_in_%s' % territory.name,
+		(PropagandaAction,),
+		dict(territory=territory,
+			 name='Distribute propaganda in %s' % territory.name,
+			 )
+		)
+	incite_rebellion = type('Incite_rebellion_in_%s' % territory.name,
+		(InciteRebellionAction,),
+		dict(territory=territory,
+			 name='Incite a rebellion in %s' % territory.name,
+			 )
+		)
+	gameactions += [defend_territory, raise_force, propaganda, incite_rebellion]
 
 class WaitAction(Action):
     __metaclass__ = abc.ABCMeta
@@ -55,5 +73,5 @@ class WaitAction(Action):
         return "Player %s waited succesfully" % player.name
 
 for action in Action.__subclasses__():
-	if action not in gameactions and action not in [AttackAction, RaiseForceAction, SendSpyAction]:
+	if action not in gameactions and action not in [AttackAction, RaiseForceAction, SendSpyAction, MoveForceAction, PropagandaAction, InciteRebellionAction]:
 		gameactions.append(action)

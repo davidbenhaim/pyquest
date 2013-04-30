@@ -52,6 +52,7 @@ from dictdiffer import DictDiffer
 from bisect import bisect
 import random
 import pdb
+import time
 
 DEFAULT_PLAYERS = [Player("A"), Player("B"), Player("C"), Player("D"), Player("E"), Player("F")]
 
@@ -137,7 +138,7 @@ class GameModel:
             border_territories |= t.get_borders() - owned
         #use local references
         border_territories = [self.territories[t.name] for t in border_territories]
-        player.gold += sum([t.gold for t in owned])
+        player.gold += sum([t.get_gold() for t in owned])
         if player.state:
             #update player's model of these territories b/c he can see them and the diplomacy of the players who control them
             for t in border_territories:
@@ -216,9 +217,9 @@ class Game:
     #need to handle order of attacks b/c if A attacks B and B attacks A the order matters b/c of moving troops
     #could do random ordering of attacks?
     #probabilities don't add up to 1 :(
-    def get_next_state(self):
-        war_actions = {k:v for k,v in self.actions_this_turn.items() if v.type == "WAR"}
-        other = {k:v for k,v in self.actions_this_turn.items() if v.type != "WAR"}
+    def get_next_states(self, actions_this_turn):
+        war_actions = {k:v for k,v in actions_this_turn.items() if v.type == "WAR"}
+        other = {k:v for k,v in actions_this_turn.items() if v.type != "WAR"}
         territories_under_attack = {action.territory.name:{} for action in war_actions.values()}
         possible_states = [(1, self.copy())]
         #nonconflicting actions
@@ -245,6 +246,10 @@ class Game:
             for p, state in possible_states:
                 new_states += [(p*np, a) for np,a in AttackAction.conflicting_states(territories_under_attack[territory], state)]
             possible_states = new_states
+        return possible_states
+
+    def get_next_state(self, actions_this_turn):
+        possible_states = self.get_next_states(actions_this_turn)
         print len(possible_states)
         next_state = self.chance(possible_states)
         print next_state
@@ -280,7 +285,7 @@ class Game:
             for key in self.diplomacy:
                 if t.status in key:
                     player.state.diplomacy[key] = self.diplomacy[key]
-        player.gold += sum([t.gold for t in owned])
+        player.gold += sum([t.get_gold() for t in owned])
         for other_player in player.state.players.values():
             if self.spies[(player.name, other_player.name)]:
                 player.state.other_player = other_player.state.copy()
@@ -333,10 +338,26 @@ class Game:
 
     #only to be called by main game object
     def play(self):
+        i = 0
         while not self.game_over():
             self.actions_this_turn = {p: None for p in self.players}
+            #profiling information
+            ts = time.time()
+            player_actions = {}
             for player in self.players.values():
-                if player.is_human:
+                player_actions[player.name] = self.actions_available(player)
+            sets_of_actions = [{player_actions.keys()[i] : x for i,x in enumerate(actions)} for actions in product(*player_actions.values())]
+            print "Number of possible action combos: %s" % len(sets_of_actions)
+            possible_states = []
+            for actions in sets_of_actions:
+                possible_states += self.get_next_states(actions)
+            te = time.time()
+            print('%2.2f sec' % (te-ts))
+            print "Number of possible following states: %s" % len(possible_states)
+            print "Turn #%i" % i
+            i += 1
+            for player in self.players.values():
+                if False:#player.is_human:
                     actions = self.actions_available(player)
                     print "Player: %s" % player.name
                     print "Gold: %i" % player.gold
@@ -356,9 +377,9 @@ class Game:
                         usr_input = input("Action: ")
                     self.actions_this_turn[player.name] = actions[usr_input]
                 else:
-                    print player
+                    self.actions_this_turn[player.name] = random.choice(self.actions_available(player))
             self.messages = {x:[] for x in self.players.keys()}
-            self.get_next_state()
+            self.get_next_state(self.actions_this_turn)
             #next update player states from the new state
         return False
 

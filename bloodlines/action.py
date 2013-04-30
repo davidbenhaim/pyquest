@@ -140,29 +140,95 @@ class MoveForceAction(Action):
     def condition(self, player, state):
         return state.territories[self.territory.name].status == player.name and \
                state.territories[self.border.name].status == player.name and \
-               state.territories[self.territory.name].player_forces > 0
+               state.territories[self.border.name].player_forces > 0
 
     def states(self, player, state):
-        loss = state.copy()
         win = state.copy()
-        #loss - modify gold
-        loss.players[player].gold -= 500
-        loss.messages[player].append(self.lose_message(player))
-        win.players[player].gold -= 500
         #win
-        win.territories[self.territory.name].player_forces += 1000
+        win.territories[self.territory.name].player_forces += win.territories[self.border.name].player_forces
+        win.territories[self.border.name].player_forces = 0
         win.messages[player].append(self.win_message(player))
         #probability
-        return [(.9, win),(.1, loss)]
+        return [(1.0, win)]
 
     def type(self):
         return self.type
 
     def win_message(self, player):
-        return "Your raised forces in %s." % self.territory.name
+        return "Your forces moved safely from %s to %s" % (self.border.name, self.territory.name)
 
     def lose_message(self, player):
         return "Your failed to raise forces in %s." % self.territory.name
+
+class PropagandaAction(Action):
+    def __init__(self):
+        self.type = "DIPLOMACY"
+
+    def condition(self, player, state):
+        return (state.territories[self.territory.name].status == player.name and \
+                state.players[player.name].gold >= 250)                      or \
+               (state.territories[self.territory.name].status != player.name and \
+                state.territories[self.territory.name].status != "WILD"     and \
+                state.spies[(player.name, state.territories[self.territory.name].status)] and \
+                state.players[player.name].gold >= 250)
+
+    def states(self, player, state):
+        win = state.copy()
+        #win
+        win.players[player].gold -= 250
+        if state.territories[self.territory.name].status == player:
+            win.territories[self.territory.name].loyalty = min(win.territories[self.territory.name].loyalty*2, 1.0)
+            win.messages[player].append(self.win_message(player))
+        else:
+            win.territories[self.territory.name].loyalty *= .5
+            win.messages[player].append(self.lose_message(player))
+        #probability
+        return [(1.0, win)]
+
+    def type(self):
+        return self.type
+
+    def win_message(self, player):
+        return "Your propaganda raised state loyalty in %s" % self.territory.name
+
+    def lose_message(self, player):
+        return "Your propaganda has lowered state loyalty in %s" % self.territory.name
+
+class InciteRebellionAction(Action):
+    def __init__(self):
+        self.type = "DIPLOMACY"
+
+    def condition(self, player, state):
+        return state.territories[self.territory.name].status != player.name and \
+               state.territories[self.territory.name].status != "WILD" and \
+               state.spies[(player.name, state.territories[self.territory.name].status)] and \
+               state.territories[self.territory.name].loyalty <= .25 and \
+               state.players[player.name].gold >= 500
+
+    def states(self, player, state):
+        if not self.condition(state.players[player], state):
+            return [(1, state.copy())]
+        loss = state.copy()
+        win = state.copy()
+        #win
+        win.players[player].gold -= 500
+        loss.players[player].gold -= 500
+        win.territories[self.territory.name].status = "WILD"
+        win.territories[self.territory.name].loyalty = .5
+        win.messages[player].append(self.win_message(player))
+        win.messages[state.territories[self.territory.name].status].append(self.lose_message(None))
+        loss.messages[player].append("You failed to incite a rebellion.")
+        #probability
+        return [(.5, win),(.5, loss)]
+
+    def type(self):
+        return self.type
+
+    def win_message(self, player):
+        return "The rebellion in %s was successful!" % self.territory.name
+
+    def lose_message(self, player):
+        return "There was a rebellion in %s" % self.territory.name
 
 class AttackAction(Action):
     def __init__(self):
@@ -205,7 +271,7 @@ class AttackAction(Action):
                 for other_player, other_action in player_actions.items():
                     if other_player != player:
                         s.territories[other_action.border.name].player_forces *=  .5
-                        s.messages[other_player].append(action.lose_message(other_player))
+                        s.messages[other_player].append(player_actions[other_player].lose_message(other_player))
                 p = (state.territories[action.border.name].player_forces*1.0)/total_forces
                 resulting_states.append((p,s))
         else:
