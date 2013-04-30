@@ -3,7 +3,21 @@ from copy import deepcopy
 from hashdict import hashdict
 from itertools import product
 from utils import *
+import random
 import pdb
+
+
+"""
+Raise_Trust - cost of giving them your updated state
+If attacked at war and can't raise trust
+diplomacy is a global variable
+gold for ally's land as well
+need to figure out how to dissuade from diplomacy and incite wars
+
+Players Not updating their models of the other players during state search?
+
+"""
+
 
 class MultiMDP(MDP):
     def __init__(self, player, players, territories, init=None, gamma=.1):
@@ -11,20 +25,21 @@ class MultiMDP(MDP):
         self.state = player
         self.players = players
         self.pi = {}
+        self.U = {}
         MDP.__init__(self, init, actlist=None, terminals=None, gamma=gamma)
 
     def R(self, state):
         "Return a numeric reward for this state."
         rewards = {}
         for player in self.players.values():
-            if player['name'] == self.state['name']:
-                reward = state['gold'] + sum([self.territories[x].gold for x in self.territories if state[x] in [state['name']]]) + sum([self.territories[x].gold*2 for x in self.territories if state[x] in [state['name']+"-REINFORCED"]]) - 3000*sum([1 for x in self.territories if state[x] not in [state['name'], state['name']+"-REINFORCED"]])
+            if player['name'] == state['name']:
+                reward = state['force'] + state['gold'] + sum([self.territories[x].gold*10 for x in self.territories if state[x] in [state['name']]]) + sum([self.territories[x].gold*20 for x in self.territories if state[x] in [state['name']+"-REINFORCED"]]) - 1000*sum([1 for x in self.territories if state[x] not in [state['name'], state['name']+"-REINFORCED"]])
                 if not [x for x in self.territories if state[x] in [state['name'], state['name']+"-REINFORCED"]]:
                     reward = -1.0*999999999999
                 if not [x for x in self.territories if state[x] not in [state['name'], state['name']+"-REINFORCED"]]:
                     reward = 999999999999
             else:
-                reward = state[player['name']]['gold'] + sum([self.territories[x].gold for x in self.territories if state[x] in [player['name']]]) + sum([self.territories[x].gold*2 for x in self.territories if state[x] in [player['name']+"-REINFORCED"]]) - 3000*sum([1 for x in self.territories if state[x] not in [player['name'], player['name']+"-REINFORCED"]])
+                reward = + state[player['name']]['force'] + state[player['name']]['gold'] + sum([self.territories[x].gold*10 for x in self.territories if state[x] in [player['name']]]) + sum([self.territories[x].gold*20 for x in self.territories if state[x] in [player['name']+"-REINFORCED"]]) - 1000*sum([1 for x in self.territories if state[x] not in [player['name'], player['name']+"-REINFORCED"]])
                 if not [x for x in self.territories if state[x] in [player['name'], player['name']+"-REINFORCED"]]:
                     reward = -1.0*999999999999
                 if not [x for x in self.territories if state[x] not in [player['name'], player['name']+"-REINFORCED"]]:
@@ -214,7 +229,7 @@ class MultiMDP(MDP):
         take_territories = [("TAKE", t) for t in border_territories if player_state['force'] >= self.territories[t].force]
         raise_trust = [("RAISE_TRUST", other_player['name']) for other_player in self.players.values() if other_player['name'] != player and player_state[other_player['name']]['Trust'] != "High"]
         send_message = []
-        return raise_forces + reenforce_territories + take_territories + raise_trust + send_message + [("WAIT",None)]
+        return raise_forces + reenforce_territories + take_territories + send_message + [("WAIT",None)]
 
     def generate_states(self):
         if not self.states:
@@ -244,12 +259,12 @@ class MultiMDP(MDP):
         # return sum(utils) #sum([p * U[s1] for (p, s1) in mdp.T(s, a)])
         return sum([p * U.get(s1,0)[s.get('name')] for (p, s1) in self.T(dict(s), a)])
 
-    def multi_bellman_equation(self, state, U, iterations=2):
+    def multi_bellman_equation(self, state, U, iterations=3):
         h_state = hashdict(state)
         if U.get(h_state):
             return U.get(h_state)
         if not iterations:
-            return {p:0 for p in self.players}
+            return self.R(state)
         # [{player:action, player:action, player:action}...]
         sets_of_actions = [{self.players.keys()[i] : x for i,x in enumerate(actions)} for actions in product(*[self.actions(state, p) if p != state['name'] else self.actions(state) for p in self.players])]
         states_actions = {hashdict(x):self.T(state, x) for x in sets_of_actions}
@@ -258,12 +273,24 @@ class MultiMDP(MDP):
             for prob, _state in states:
                 for p in actions:
                     R[hashdict(actions)][p] += prob*self.multi_bellman_equation(_state, U, iterations-1)[p]
-        max_actions = {}
+        # values_per_action = {p:{} for p in self.players}
+        # for actions in R:
+        #     for p in self.players:
+        #         if values_per_action[p].get(actions[p]):
+        #             values_per_action[p][actions[p]].append(R[actions][p])
+        #         else:
+        #             values_per_action[p][actions[p]] = [R[actions][p]]
+        # for p in values_per_action:
+        #     for action in values_per_action[p]:
+        #         values_per_action[p][action] = mean(values_per_action[p][action])
+        max_actions = {}#hashdict({p:max(values_per_action[p]) for p in values_per_action})
         for actions in R:
             for p in self.players:
                 if max_actions.get(p):
                     if max_actions[p][1] < R[actions][p]:
                         max_actions[p] = actions[p],R[actions][p]
+                    elif max_actions[p][1] == R[actions][p]:
+                        max_actions[p] = random.choice([actions[p],max_actions[p][0]]),R[actions][p]
                 else:
                     max_actions[p] = actions[p], R[actions][p]
         max_actions = hashdict({k:v[0] for k,v in max_actions.items()})

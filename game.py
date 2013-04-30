@@ -40,10 +40,14 @@ class Game:
     def take_turn(self):
         self.actions[self.turn] = {}
         for player in self.players.values():
+            print "Player "+player.get('name')
+            print "Force: %i" % self.state[player.get('name')]['force']
+            print "Gold: %i" % self.state[player.get('name')]['gold']
+            for p in self.players:
+                if p != player['name']:
+                    print "%s: Trust: %s, Diplomacy: %s" % (p, self.state[player['name']][p]['Trust'], self.state[player['name']][p]['Diplomacy'])
             if player.get('is_human'):
                 actions = self.actions_available(self.state[player['name']])
-                print "Player "+player.get('name')
-                print self.state[player.get('name')]
                 print "Actions available:"
                 for i,action in enumerate(actions):
                     print '%i: %s' % (i, action)
@@ -59,10 +63,10 @@ class Game:
                 # pi = m.best_policy(U)
                 if hashdict(self.state[player['name']]) not in self.comps[player['name']].pi:
                     self.comps[player['name']] = MultiMDP(self.state[player['name']], self.players, self.territories, self.state[player['name']])
-                    U = {}
-                    self.comps[player['name']].multi_bellman_equation(self.comps[player['name']].state, U)
+                    self.comps[player['name']].multi_bellman_equation(self.comps[player['name']].state, self.comps[player['name']].U)
+                # pdb.set_trace()
                 action = self.comps[player['name']].pi[hashdict(self.state[player['name']])]
-                print action
+                print action, self.comps[player['name']].U[hashdict(self.state[player['name']])]
                 self.actions[self.turn][player['name']] = action
         states = self.possible_states_from_actions()
         self.old_states[self.turn] = self.state
