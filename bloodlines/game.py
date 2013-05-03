@@ -52,7 +52,11 @@ from dictdiffer import DictDiffer
 from bisect import bisect
 import random
 import pdb
+
+#profiling
 import time
+import cProfile
+import pstats
 
 DEFAULT_PLAYERS = [Player("A"), Player("B"), Player("C"), Player("D"), Player("E"), Player("F")]
 
@@ -86,37 +90,60 @@ Game
                     game_model
 
 """
-class GameModel:
+class GameModel(object):
     def __init__(self, game=None, player=None):
         self.actions = gameactions
         self.player = player
         if game and player:
-            self.territories = {t.name: t.copy() for t in game.territories.values()}
+            self.territories = {t: game.territories[t].copy() for t in game.territories}
             self.diplomacy = game.diplomacy.copy()
             self.spies = game.spies.copy()
-            self.messages = {k:v[:] for k,v in game.messages.items()}
-            self.players = {p.name: PlayerModel(p , self.limited(game, p)) for p in game.players.values() if p.name != player.name}
+            self.messages = {k:game.messages[k][:] for k in game.messages}
+            self.players = {p: PlayerModel(game.players[p] , self.limited(game, game.players[p])) for p in game.players if p != player.name}
 
+    def to_dict(self):
+        g = {}
+        g['players'] = {p.name:p.to_dict() for p in self.players.values()}
+        g['territories'] = {t.name:t.to_dict() for t in self.territories.values()}
+        g['players'] = {p.name:p.to_dict() for p in self.players.values()}
+        g['diplomacy'] = {str(k):v for k,v in self.diplomacy.items()}
+        g['spies'] = {str(k):v for k,v in self.spies.items()}
+        return g
+
+    def to_list(self):
+        g = []
+        self.start_stop = {}
+        for player in self.players:
+            start = len(g)
+            g += self.players[player].to_list()
+            stop = len(g)
+            self.start_stop[self.players[player].name] = (start, stop)
+        for t in self.territories:
+            start = len(g)
+            g += self.territories[t].to_list()
+            stop = len(g)
+            self.start_stop[self.territories[t].name] = (start, stop)
+        return g
 
     #returns a game model with diplomacy, territories, spies, and a limited player_model of each other player 
     def limited(self, game, player):
         g = GameModel()
         g.player = player
-        g.territories = {t.name: t.copy() for t in game.territories.values()}
+        g.territories = {t: game.territories[t].copy() for t in game.territories}
         g.diplomacy = game.diplomacy.copy()
         g.spies = game.spies.copy()
-        g.players = {p.name: PlayerModel(p) for p in game.players.values() if p.name != player.name}
-        g.messages = {x:[] for x in game.players.keys()}
+        g.players = {p: PlayerModel(game.players[p]) for p in game.players if p != player.name}
+        g.messages = {x:[] for x in game.players}
         return g
 
     def copy(self):
         g = GameModel()
         g.player = self.player
-        g.messages = {k:v[:] for k,v in self.messages.items()}
-        g.territories = {t.name: t.copy() for t in self.territories.values()}
+        g.messages = {k:self.messages[k][:] for k in self.messages}
+        g.territories = {t: self.territories[t].copy() for t in self.territories}
         g.diplomacy = self.diplomacy.copy()
         g.spies = self.spies.copy()
-        g.players = {p.name: p.copy() for p in self.players.values()}
+        g.players = {p: self.players[p].copy() for p in self.players}
         return g
 
     def set_diplomacy(self, p1, p2, diplomacy):
@@ -124,7 +151,11 @@ class GameModel:
 
     #does it make sense to pass around the action classes or an instance of the action? currently passing around instance
     def actions_available(self, player):
-        return [action() for action in self.actions if action().condition(player, self)]
+        actions = []
+        for action in self.actions:
+            a = action()
+            if a.condition(player,self): actions.append(a)
+        return actions
 
     """
     Have to update each player's game_model based on the last round of actions
@@ -132,34 +163,34 @@ class GameModel:
     update the player's model of each other player and their model of each player according to the last move
     """
     def update_player(self, player):
-        owned = set([self.territories[t] for t in self.territories if self.territories[t].status == player.name])
+        owned = {t for t in self.territories if self.territories[t].status == player.name}
         border_territories = set()
         for t in owned:
-            border_territories |= t.get_borders() - owned
+            border_territories |= self.territories[t].get_borders() - owned
         #use local references
-        border_territories = [self.territories[t.name] for t in border_territories]
-        player.gold += sum([t.get_gold() for t in owned])
+        border_territories = [self.territories[t] for t in border_territories]
+        player.gold += sum([self.territories[t].get_gold() for t in owned])
         if player.state:
             #update player's model of these territories b/c he can see them and the diplomacy of the players who control them
             for t in border_territories:
-                player.state.territories[t.name] = t
+                player.state.territories[t.name] = self.territories[t.name]
                 for key in self.diplomacy:
                     if t.status in key:
                         player.state.diplomacy[key] = self.diplomacy[key]
             #update player's model of the territories he owns
             for t in owned:
-                player.state.territories[t.name] = t
+                player.state.territories[t] = self.territories[t]
                 for key in self.diplomacy:
-                    if t.status in key:
+                    if self.territories[t].status in key:
                         player.state.diplomacy[key] = self.diplomacy[key]
             for other_player in player.state.players.values():
                 player.state.update_player(other_player)
 
-class Game:
+class Game(object):
     def __init__(self, players, main=False):
         # self.State = make_State(territories)
         self.players = {p.name: p for p in players}
-        self.territories = {t.name:t for t in gamemap}
+        self.territories = {t:gamemap[t] for t in gamemap}
         self.diplomacy = {frozenset(x):Diplomacy.Neutral for x in combinations(self.players.keys(), 2)}
         self.spies = {x:0 for x in permutations(self.players.keys(), 2)}
         self.messages = {x:[] for x in self.players.keys()}
@@ -174,7 +205,30 @@ class Game:
                      )
                 )
             self.actions.append(send_spy)
-    
+
+    def to_dict(self):
+        g = {}
+        g['players'] = {p.name:p.to_dict() for p in self.players.values()}
+        g['territories'] = {t.name:t.to_dict() for t in self.territories.values()}
+        g['players'] = {p.name:p.to_dict() for p in self.players.values()}
+        g['diplomacy'] = {str(k):v for k,v in self.diplomacy.items()}
+        g['spies'] = {str(k):v for k,v in self.spies.items()}
+        return g
+
+    def to_list(self):
+        g = []
+        self.start_stop = {}
+        for player in self.players:
+            start = len(g)
+            g += self.players[player].to_list()
+            stop = len(g)
+            self.start_stop[self.players[player].name] = (start, stop)
+        for t in self.territories:
+            start = len(g)
+            g += self.territories[t].to_list()
+            stop = len(g)
+            self.start_stop[self.territories[t].name] = (start, stop)
+        return g
 
     """
     init the game
@@ -202,15 +256,19 @@ class Game:
 
     #does it make sense to pass around the action classes or an instance of the action? currently passing around instance
     def actions_available(self, player):
-        return [action() for action in self.actions if action().condition(player, self)]
+        actions = []
+        for action in self.actions:
+            a = action()
+            if a.condition(player,self): actions.append(a)
+        return actions
 
     def copy(self):
         g = GameModel()
-        g.territories = {t.name: t.copy() for t in self.territories.values()}
+        g.territories = {t: self.territories[t].copy() for t in self.territories}
         g.diplomacy = self.diplomacy.copy()
         g.spies = self.spies.copy()
-        g.messages = {k:v[:] for k,v in self.messages.items()}
-        g.players = {p.name: p.copy() for p in self.players.values()}
+        g.messages = {k:self.messages[k][:] for k in self.messages}
+        g.players = {p: self.players[p].copy() for p in self.players}
         return g
 
     #TODO
@@ -218,25 +276,27 @@ class Game:
     #could do random ordering of attacks?
     #probabilities don't add up to 1 :(
     def get_next_states(self, actions_this_turn):
-        war_actions = {k:v for k,v in actions_this_turn.items() if v.type == "WAR"}
-        other = {k:v for k,v in actions_this_turn.items() if v.type != "WAR"}
-        territories_under_attack = {action.territory.name:{} for action in war_actions.values()}
+        war_actions = {k:actions_this_turn[k] for k in actions_this_turn if actions_this_turn[k].type == "WAR"}
+        other = {k:actions_this_turn[k] for k in actions_this_turn if actions_this_turn[k].type != "WAR"}
+        territories_under_attack = {war_actions[p].territory.name:{} for p in war_actions}
         possible_states = [(1, self.copy())]
         #nonconflicting actions
-        for player, action in other.items():
+        for player in other:
+            action = other[player]
             new_states = []
             for p, state in possible_states:
                 new_states += [(p*np, a) for np,a in action.states(player, state)]
             possible_states = new_states
         #conflicting actions
-        for player, action in war_actions.items():
+        for player in war_actions:
+            action = war_actions[player]
             territories_under_attack[action.territory.name][player] = action
         #deal with cases of A attacking B and B attacking A and C attacking A etc by randomly stopping players from attacking to defend
         attackers = []
         for territory, players in territories_under_attack.items():
             defender = self.territories[territory].status
             if defender != "WILD" and defender not in attackers:
-                if war_actions.get(defender) and territories_under_attack.get(war_actions[defender].territory.name) and territories_under_attack[war_actions[defender].territory.name][defender]:
+                if war_actions.get(defender) and territories_under_attack.get(war_actions[defender].territory.name) and territories_under_attack[war_actions[defender].territory.name].get(defender):
                     attackers += players
                     del territories_under_attack[war_actions[defender].territory.name][defender]
                     if not len(territories_under_attack[war_actions[defender].territory.name]):
@@ -263,29 +323,29 @@ class Game:
     update the player's model of each other player and their model of each player according to the last move
     """
     def update_player(self, player):
-        owned = set([self.territories[t] for t in self.territories if self.territories[t].status == player.name])
+        owned = {t for t in self.territories if self.territories[t].status == player.name}
         #player is dead
         if not owned:
             del self.players[player.name]
             return
         border_territories = set()
         for t in owned:
-            border_territories |= t.get_borders() - owned
+            border_territories |= self.territories[t].get_borders() - owned
         #use local references
-        border_territories = [self.territories[t.name] for t in border_territories]
+        border_territories = [self.territories[t] for t in border_territories]
         #update player's model of these territories b/c he can see them and the diplomacy of the players who control them
         for t in border_territories:
-            player.state.territories[t.name] = t
+            player.state.territories[t.name] = self.territories[t.name]
             for key in self.diplomacy:
                 if t.status in key:
                     player.state.diplomacy[key] = self.diplomacy[key]
         #update player's model of the territories he owns
         for t in owned:
-            player.state.territories[t.name] = t
+            player.state.territories[t] = self.territories[t]
             for key in self.diplomacy:
-                if t.status in key:
+                if self.territories[t].status in key:
                     player.state.diplomacy[key] = self.diplomacy[key]
-        player.gold += sum([t.get_gold() for t in owned])
+        player.gold += sum([self.territories[t].get_gold() for t in owned])
         for other_player in player.state.players.values():
             if self.spies[(player.name, other_player.name)]:
                 player.state.other_player = other_player.state.copy()
@@ -342,17 +402,19 @@ class Game:
         while not self.game_over():
             self.actions_this_turn = {p: None for p in self.players}
             #profiling information
-            ts = time.time()
+            pr = cProfile.Profile()
+            pr.enable()
+            possible_states = 0
             player_actions = {}
             for player in self.players.values():
                 player_actions[player.name] = self.actions_available(player)
             sets_of_actions = [{player_actions.keys()[i] : x for i,x in enumerate(actions)} for actions in product(*player_actions.values())]
+            print {k:len(v) for k,v in player_actions.items()}
             print "Number of possible action combos: %s" % len(sets_of_actions)
-            possible_states = 0
             for actions in sets_of_actions:
-                possible_states += len(self.get_next_states(actions))
-            te = time.time()
-            print('%2.2f sec' % (te-ts))
+                    self.get_next_states(actions)
+            pr.disable()
+            pr.print_stats('cumulative')
             print "Number of possible following states: %i" % possible_states
             print "Turn #%i" % i
             i += 1
@@ -379,7 +441,9 @@ class Game:
                 else:
                     self.actions_this_turn[player.name] = random.choice(self.actions_available(player))
             self.messages = {x:[] for x in self.players.keys()}
-            self.get_next_state(self.actions_this_turn)
+            pdb.set_trace()
+            cProfile.runctx('self.get_next_state(self.actions_this_turn)',globals(),{'self':self}, 'profile.stats')
+            stats = pstats.Stats('profile.stats')
             #next update player states from the new state
         return False
 

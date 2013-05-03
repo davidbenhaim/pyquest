@@ -4,8 +4,9 @@ import abc
 
 gameactions = []
 
-for territory in gamemap:
-	for border in territory.get_borders():
+for territory in gamemap.values():
+	for b in territory.get_borders():
+		border = gamemap.get(b)
 		attack_territory_from_other = type('Attack_%s_from_%s' % (territory.name, border.name),
 			(AttackAction,),
 			dict(territory=territory,
@@ -22,7 +23,7 @@ for territory in gamemap:
 			)
 		gameactions += [attack_territory_from_other, move_forces_from_other]
 
-for territory in gamemap:
+for territory in gamemap.values():
 	defend_territory = type('Defend_%s' % territory.name,
 		(DefendAction,),
 		dict(territory=territory,
@@ -61,7 +62,7 @@ class WaitAction(Action):
         return True
 
     def states(self, player, state):
-        return [(1, state.copy())]
+        return [(1, state)]
 
     def type(self):
         return self.type

@@ -249,26 +249,25 @@ class AttackAction(Action):
     """
     @staticmethod
     def conflicting_states(player_actions, state):
-        territory = set([action.territory for action in player_actions.values()])
-        if len(territory) != 1:
-            pdb.set_trace()
-        else:
-            territory = territory.pop()
+        territory = player_actions[player_actions.keys()[0]].territory
         defender = state.territories[territory.name].status
         resulting_states = []
         #if wild
         if defender == "WILD":
-            total_forces = sum([state.territories[action.border.name].player_forces for action in player_actions.values()])
-            diplomacy = {frozenset((p1,p2)):Diplomacy.War for p1,p2 in combinations(player_actions.keys(), 2)}
-            for player, action in player_actions.items():
+            total_forces = sum([state.territories[player_actions[p].border.name].player_forces for p in player_actions])
+            diplomacy = [frozenset((p1,p2)) for p1,p2 in combinations(player_actions.keys(), 2)]
+            for player in player_actions:
+                action = player_actions[player]
                 s = state.copy()
-                s.diplomacy.update(diplomacy)
+                for combo in diplomacy:
+                    s.diplomacy[combo] = Diplomacy.War
                 # s.players[player].state.diplomacy.update(diplomacy)
                 s.territories[territory.name].status = player
                 s.territories[territory.name].player_forces = s.territories[action.border.name].player_forces
                 s.territories[action.border.name].player_forces = 0
                 s.messages[player].append(action.win_message(player))
-                for other_player, other_action in player_actions.items():
+                for other_player in player_actions:
+                    other_action = player_actions[other_player]
                     if other_player != player:
                         s.territories[other_action.border.name].player_forces *=  .5
                         s.messages[other_player].append(player_actions[other_player].lose_message(other_player))
@@ -276,21 +275,27 @@ class AttackAction(Action):
                 resulting_states.append((p,s))
         else:
             if defender not in player_actions:
-                for defend in DefendAction.__subclasses__():
-                    if defend().border == territory:
-                        player_actions[defender] = defend()
-            total_forces = sum([state.territories[action.border.name].player_forces for action in player_actions.values()]) + territory.natural_force
-            diplomacy = {frozenset((p1,p2)):Diplomacy.War for p1,p2 in combinations(player_actions.keys(), 2)}
+                defend_territory = type('Defend_%s' % territory.name,
+                    (DefendAction,),
+                    dict(territory=territory,
+                         border=territory,
+                         name='Defend %s' % territory.name,
+                         )
+                    )
+                player_actions[defender] = defend_territory()
+            total_forces = sum([state.territories[player_actions[p].border.name].player_forces for p in player_actions]) + territory.natural_force
+            diplomacy = [frozenset((p1,p2)) for p1,p2 in combinations(player_actions.keys(), 2)]
             for player, action in player_actions.items():
                 s = state.copy()
-                s.diplomacy.update(diplomacy)
-                # s.players[player].state.diplomacy.update(diplomacy)
+                for combo in diplomacy:
+                    s.diplomacy[combo] = Diplomacy.War
                 s.territories[territory.name].status = player
                 s.territories[territory.name].player_forces = s.territories[action.border.name].player_forces
                 s.messages[player].append(action.win_message(player))
                 if player != defender:
                     s.territories[action.border.name].player_forces = 0
-                for other_player, other_action in player_actions.items():
+                for other_player in player_actions:
+                    other_action = player_actions[other_player]
                     if other_player != player and other_player != defender:
                         s.territories[other_action.border.name].player_forces *=  .5
                         s.messages[other_player].append(action.lose_message(other_player))
